@@ -13,7 +13,7 @@ import { IMovieService } from './IMovieService';
 @scoped(Lifecycle.ResolutionScoped)
 export class MovieService implements IMovieService {
   constructor(
-    @inject('IMovieRepository') private repository: IMovieRepository,
+    @inject('IMovieRepository') private repository: IMovieRepository
   ) {}
 
   public async getById(id: number) {
@@ -25,18 +25,50 @@ export class MovieService implements IMovieService {
   }
 
   public async getListingData(request: MovieListingRequest) {
-    const { genre, orderBy, limit } = request;
+    const { genre, orderBy, limit, pageNumber } = request;
 
-    const result = await this.repository.getListingData(
-      genre!,
-      orderBy || 'year',
-      limit!
-    );
+    const $sort: any = {};
+    $sort[orderBy ?? 'Year'] = -1;
 
-    if (!result) return undefined;
+    const pipeline: object[] = [
+      {
+        $match: {
+          firstGenre: genre,
+        },
+      },
+      {
+        $facet: {
+          result: [
+            { $sort },
+            {
+              $project: {
+                id: '$_id',
+                poster: '$poster',
+                title: '$title',
+                _id: false,
+              },
+            },
+            {
+              $limit: limit,
+            },
+            {
+              $skip: (pageNumber! - 1) * (limit ?? 10),
+            },
+          ],
+          count: [{ $count: 'count' }],
+        },
+      },
+    ];
+
+    const rawResult = (
+      await this.repository.agregate<any>(pipeline)
+    )?.pop();
+
+    if (!rawResult) return undefined;
 
     const movieListingResult: MovieListingResponse = {
-      result,
+      result: rawResult.result,
+      count: rawResult.count.pop().count,
     };
 
     return movieListingResult;
@@ -68,7 +100,6 @@ export class MovieService implements IMovieService {
     const movie = (await this.repository.getOne(Number(request.movieId)))!;
 
     if (movie.comments) movie.comments = [...movie.comments, request.comment];
-    
     else movie.comments = [request.comment];
 
     await this.repository.update(movie);

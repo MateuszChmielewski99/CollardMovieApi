@@ -29,6 +29,7 @@ export class MovieController {
       genre: request.query.genre as string,
       orderBy: (request.query.orderBy as string) || 'year',
       limit: Number(request.query.limit) || 12,
+      pageNumber:Number(request.query.pageNumber) || 1
     };
 
     if (!command.genre) return response.status(400).send('invalid request');
